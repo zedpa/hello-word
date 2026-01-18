@@ -1,0 +1,174 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 用户模型
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  username      String    @unique
+  password      String
+  name          String?
+  avatar        String?
+  bio           String?
+  points        Int       @default(0)       // 积分余额
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // 关联关系
+  ideas         Idea[]
+  comments      Comment[]
+  likes         IdeaLike[]
+  pointHistory  PointHistory[]
+
+  @@index([email])
+  @@index([username])
+}
+
+// 灵感模型 - 核心内容
+model Idea {
+  id            String    @id @default(cuid())
+  title         String
+  description   String    @db.Text
+  content       String?   @db.Text       // 详细内容（可选）
+  status        IdeaStatus @default(DRAFT) // 草稿/发布/完成
+  category      String?                   // 分类
+  viewCount     Int       @default(0)
+  likeCount     Int       @default(0)
+  commentCount  Int       @default(0)
+
+  authorId      String
+  author        User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  publishedAt   DateTime?
+
+  // 关联关系
+  comments      Comment[]
+  likes         IdeaLike[]
+  tags          IdeaTag[]
+
+  @@index([authorId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum IdeaStatus {
+  DRAFT       // 草稿
+  PUBLISHED   // 已发布
+  IN_PROGRESS // 进行中
+  COMPLETED   // 已完成
+  ARCHIVED    // 已归档
+}
+
+// 评论模型 - 社区讨论
+model Comment {
+  id            String    @id @default(cuid())
+  content       String    @db.Text
+
+  authorId      String
+  author        User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  ideaId        String
+  idea          Idea      @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+
+  parentId      String?
+  parent        Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies       Comment[] @relation("CommentReplies")
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([ideaId])
+  @@index([authorId])
+  @@index([parentId])
+}
+
+// 点赞关系
+model IdeaLike {
+  id            String    @id @default(cuid())
+
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  ideaId        String
+  idea          Idea      @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime  @default(now())
+
+  @@unique([userId, ideaId])
+  @@index([userId])
+  @@index([ideaId])
+}
+
+// 标签模型
+model Tag {
+  id            String    @id @default(cuid())
+  name          String    @unique
+  description   String?
+  color         String?   // 标签颜色
+  useCount      Int       @default(0)
+
+  createdAt     DateTime  @default(now())
+
+  ideas         IdeaTag[]
+
+  @@index([name])
+}
+
+// 灵感-标签关联表
+model IdeaTag {
+  id            String    @id @default(cuid())
+
+  ideaId        String
+  idea          Idea      @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+
+  tagId         String
+  tag           Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime  @default(now())
+
+  @@unique([ideaId, tagId])
+  @@index([ideaId])
+  @@index([tagId])
+}
+
+// 积分历史记录
+model PointHistory {
+  id            String    @id @default(cuid())
+
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  amount        Int                    // 积分变动数量（正数为增加，负数为减少）
+  type          PointTransactionType   // 交易类型
+  description   String?                // 描述
+  relatedId     String?                // 关联的资源ID（如灵感ID、评论ID等）
+
+  createdAt     DateTime  @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+enum PointTransactionType {
+  PUBLISH_IDEA      // 发布灵感
+  RECEIVE_LIKE      // 收到点赞
+  RECEIVE_COMMENT   // 收到评论
+  DAILY_LOGIN       // 每日登录
+  PURCHASE          // 购买
+  REWARD            // 奖励
+  DEDUCTION         // 扣除
+}
